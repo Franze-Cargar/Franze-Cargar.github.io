@@ -6,6 +6,7 @@
  * ALLOWED_ORIGIN: https://<username>.github.io (PLAIN ENV VAR)
  * RETURN_BASE_URL: https://<username>.github.io/<optional-repo> (PLAIN ENV VAR)
  * DEMO_ACCESS_TOKEN: unique strong code, given only to testers (SECRET)
+ * DB: D1 database binding with the existing checkout_sessions table
  *
  * The access token is supplied by testers separately — NEVER commit it to JS.
  */
@@ -33,6 +34,7 @@ export default {
     const name = String(body.name || '').trim();
     const email = String(body.email || '').trim();
     if (name.length < 2 || name.length > 80 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120) return reply({ error: 'Invalid name or email format' }, 400);
+    if (!env.DB || typeof env.DB.prepare !== 'function') return reply({ error: 'Checkout storage is not configured' }, 503);
     const base = env.RETURN_BASE_URL.replace(/\/$/, '');
     const attributes = {
       line_items: [{ name: 'Sample website service package - TEST', amount: 150000, currency: 'PHP', quantity: 1 }],
@@ -51,8 +53,25 @@ export default {
       });
       const json = await upstream.json();
       if (!upstream.ok) return reply({ error: 'PayMongo test session request failed', details: json.errors?.map(e => e.code).slice(0, 3) || [] }, 502);
+      const session_id = json.data?.id;
+      const reference_number = json.data?.attributes?.reference_number;
+      const livemode = json.data?.attributes?.livemode;
       const checkout_url = json.data?.attributes?.checkout_url;
-      if (!checkout_url?.startsWith('https://checkout.paymongo.com/')) return reply({ error: 'Invalid session response' }, 502);
+      if (typeof session_id !== 'string' || !session_id.trim() ||
+          livemode !== false || reference_number !== attributes.reference_number ||
+          typeof checkout_url !== 'string' || !checkout_url.startsWith('https://checkout.paymongo.com/')) {
+        return reply({ error: 'Invalid session response' }, 502);
+      }
+      try {
+        const stored = await env.DB.prepare(
+          'INSERT INTO checkout_sessions ' +
+          '(reference_number, session_id, expected_amount, currency, livemode, status, created_at, updated_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
+        ).bind(attributes.reference_number, session_id, 150000, 'PHP', 0, 'pending').run();
+        if (stored?.success !== true) return reply({ error: 'Unable to store checkout session' }, 503);
+      } catch {
+        return reply({ error: 'Unable to store checkout session' }, 503);
+      }
       return reply({ checkout_url }, 200);
     } catch {
       return reply({ error: 'Temporary backend error' }, 502);
