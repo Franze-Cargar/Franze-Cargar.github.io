@@ -53,13 +53,31 @@ export default {
       });
       const json = await upstream.json();
       if (!upstream.ok) return reply({ error: 'PayMongo test session request failed', details: json.errors?.map(e => e.code).slice(0, 3) || [] }, 502);
-      const session_id = json.data?.id;
-      const reference_number = json.data?.attributes?.reference_number;
-      const livemode = json.data?.attributes?.livemode;
-      const checkout_url = json.data?.attributes?.checkout_url;
-      if (typeof session_id !== 'string' || !session_id.trim() ||
-          livemode !== false || reference_number !== attributes.reference_number ||
-          typeof checkout_url !== 'string' || !checkout_url.startsWith('https://checkout.paymongo.com/')) {
+      const session_id = json?.data?.id;
+      const response_attributes = json?.data?.attributes;
+      const reference_number = response_attributes?.reference_number;
+      const has_reference_number = response_attributes != null &&
+        Object.prototype.hasOwnProperty.call(response_attributes, 'reference_number');
+      const livemode = response_attributes?.livemode;
+      const checkout_url = response_attributes?.checkout_url;
+      const invalid_fields = [];
+      if (typeof session_id !== 'string' || !session_id.trim()) invalid_fields.push('session_id');
+      if (livemode !== false) invalid_fields.push('livemode');
+      // PayMongo v2 may omit the reference; an explicitly different value is invalid.
+      if (has_reference_number && reference_number !== attributes.reference_number) invalid_fields.push('reference_number');
+      let valid_checkout_url = false;
+      if (typeof checkout_url === 'string') {
+        try {
+          const checkout = new URL(checkout_url);
+          valid_checkout_url = checkout.origin === 'https://checkout.paymongo.com' &&
+            checkout.username === '' && checkout.password === '';
+        } catch {
+          // Only fixed field names are reported below, never the URL or parser error.
+        }
+      }
+      if (!valid_checkout_url) invalid_fields.push('checkout_url');
+      if (invalid_fields.length) {
+        console.warn('PayMongo checkout response validation failed', { invalid_fields });
         return reply({ error: 'Invalid session response' }, 502);
       }
       try {
