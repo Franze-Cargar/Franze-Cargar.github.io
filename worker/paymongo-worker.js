@@ -182,13 +182,19 @@ function webhookReply(data, status) {
   });
 }
 
-// Temporary diagnostics: fixed labels and numeric HTTP status only; never payloads or errors.
-function warnWebhook503(stage, operation, upstreamStatus) {
+// Temporary diagnostics: fixed labels, numeric HTTP status, and elapsed milliseconds only.
+function warnWebhook503(stage, operation, upstreamStatus, classification, durationMs) {
   console.warn("PayMongo webhook HTTP 503", {
     stage,
     operation,
     ...(Number.isInteger(upstreamStatus) && upstreamStatus >= 100 && upstreamStatus <= 599
       ? { upstream_http_status: upstreamStatus }
+      : {}),
+    ...(["request_timeout", "network_or_fetch_rejection", "upstream_non_2xx", "invalid_json_response"].includes(classification)
+      ? { classification }
+      : {}),
+    ...(Number.isSafeInteger(durationMs) && durationMs >= 0
+      ? { duration_ms: durationMs }
       : {}),
   });
 }
@@ -310,8 +316,11 @@ function normalizePaymongoEvent(payload) {
 }
 
 async function retrievePaymongoResource(path, secret, diagnosticStage) {
-  let upstreamStatus;
+  const startedAt = Date.now();
+  let upstreamStatus, timeoutSignal;
+  let classification = "network_or_fetch_rejection";
   try {
+    timeoutSignal = AbortSignal.timeout(5000);
     const response = await fetch("https://api.paymongo.com/v1/" + path, {
       method: "GET",
       headers: {
@@ -319,13 +328,32 @@ async function retrievePaymongoResource(path, secret, diagnosticStage) {
         Accept: "application/json",
       },
       redirect: "error",
-      signal: AbortSignal.timeout(5000),
+      signal: timeoutSignal,
     });
     upstreamStatus = response.status;
-    if (!response.ok) throw new Error("PayMongo verification unavailable");
-    return (await response.json())?.data;
+    if (!response.ok) {
+      classification = "upstream_non_2xx";
+      throw new Error("PayMongo verification unavailable");
+    }
+    try {
+      return (await response.json())?.data;
+    } catch (error) {
+      // A body-read/network error is distinct from malformed JSON.
+      if (error instanceof SyntaxError) classification = "invalid_json_response";
+      throw error;
+    }
   } catch (error) {
-    warnWebhook503(diagnosticStage, "retrieve_resource", upstreamStatus);
+    // Use our timeout signal's state, never exception text, to identify timeouts.
+    if (timeoutSignal?.aborted && classification !== "upstream_non_2xx") {
+      classification = "request_timeout";
+    }
+    warnWebhook503(
+      diagnosticStage,
+      "retrieve_resource",
+      upstreamStatus,
+      classification,
+      Math.max(0, Date.now() - startedAt),
+    );
     throw error;
   }
 }
