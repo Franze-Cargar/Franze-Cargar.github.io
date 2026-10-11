@@ -327,7 +327,7 @@ async function retrievePaymongoResource(path, secret, diagnosticStage) {
         Authorization: "Basic " + btoa(secret + ":"),
         Accept: "application/json",
       },
-      redirect: "error",
+      redirect: "manual",
       signal: timeoutSignal,
     });
     upstreamStatus = response.status;
