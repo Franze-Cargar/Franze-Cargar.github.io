@@ -16,3 +16,4 @@
 @media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
 
 .preview-shot{background:#e9ede8}.preview-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;display:block;transition:transform .5s ease}.project-card:hover .preview-shot img{transform:scale(1.03)}.preview-shot::after{content:"";position:absolute;inset:0;box-shadow:inset 0 -1px 0 #e0e5df;pointer-events:none}
+.contact-lines{list-style:none;margin:24px 0 0;padding:0;border-top:1px solid #c3dba8}.contact-lines li{display:flex;justify-content:space-between;gap:16px;padding:13px 0;border-bottom:1px solid #c3dba8;font-size:13px}.contact-lines span{color:#50664a;font-weight:700;letter-spacing:.4px}.contact-lines a{color:var(--ink);font-weight:700;text-align:right;overflow-wrap:anywhere}.contact-lines a:hover{text-decoration:underline}

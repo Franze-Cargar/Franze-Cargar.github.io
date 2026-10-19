@@ -20,8 +20,6 @@ This is the existing `Franze-Cargar/Franze-Cargar.github.io` repository. The por
 
 ## Still to customize
 
-- Add a personal business email to the contact section (it currently links to GitHub only).
-- Add a public PETD link once verified; PEJ links to https://www.ejournals.ph.
 - The payment demo section is hidden on the homepage (HTML comment in `index.html`) until the PayMongo test integration is verified. `payment-demo/` itself is unchanged.
 
 ## Screenshots
